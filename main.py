@@ -10,31 +10,38 @@ from tkcalendar import Calendar
 from tkinter import simpledialog
 from geopy.geocoders import Nominatim
 from geopy.distance import geodesic
+from tkinter import scrolledtext
+from threading import Thread
+from time import sleep
 
 class Utils:
+    
+    ### BILL GATES ###
     
     def __init__(self):
         # Initialize the Tkinter root window (necessary for file dialogs and other widgets)
         self.root = tk.Tk()
         self.root.withdraw()  # Hide the root window initially
+        self.completedScan = True # Initialize Variable
 
         # Prompt the user for their first and last name
-        self.first_name = simpledialog.askstring("Input", "Enter your first name:").capitalize().strip()
-        self.last_name = simpledialog.askstring("Input", "Enter your last name:").capitalize().strip()
+        self.firstName = simpledialog.askstring("Input", "First Name:").capitalize().strip()
+        self.lastName = simpledialog.askstring("Input", "Last Name:").capitalize().strip()
 
-        self.d2d_rep = f"{self.first_name} {self.last_name}"
+        self.d2d_rep = f"{self.firstName} {self.lastName}"
 
         # Open a file dialog to choose an Excel file
-        self.file_path = load_file.askopenfilename(title="Select The Mileage Excel File", filetypes=[("Excel files", "*.xlsx;*.xls")])
+        self.filePath = load_file.askopenfilename(title="Select The Mileage Excel File", filetypes=[("Excel files", "*.xlsx;*.xls")])
 
-        if self.file_path:
+        if self.filePath:
             try:
-                self.file = pd.read_excel(io=self.file_path, engine='openpyxl', na_filter=False)
+                self.file = pd.read_excel(io=self.filePath, engine='openpyxl', na_filter=False)
                 self.file.columns = ['D2D Rep', 'Sales ID', 'Employee ID', 'Form ID', 'Form Name', 'FormInstanceID', 'Date Submitted', 
                   'Time Submitted', 'Address1', 'Address2', 'City', 'State', 'Zip', 'Distance from Entity']
                 self.file['Date Submitted'] = pd.to_datetime(self.file['Date Submitted'], errors='coerce')
                 self.file = self.file[self.file["D2D Rep"] == self.d2d_rep]
-                self.available_dates = self.getDatesAvailable()
+                self.availableDates = self.getDatesAvailable()
+                self.previouslySelectedDate = self.availableDates[0]
                 self.file['Time Submitted'] = pd.to_datetime(
                     self.file['Time Submitted'], format='%H:%M:%S', errors='coerce'
                 ).dt.time
@@ -45,6 +52,85 @@ class Utils:
         else:
             print("No File Selected")
             self.__init__()
+    
+    ### UI GATES ###
+    
+    def selectDay(self):
+        calendar_window = tk.Toplevel(self.root)  # New window for calendar
+        calendar_window.title("Select Work Day")
+        selected_date = None  # Initialize selected date as None
+
+        # Create calendar widget
+        cal = Calendar(calendar_window, selectmode='day', date_pattern='yyyy-mm-dd')
+        cal.pack(pady=20)
+
+        # Highlight available dates in the calendar
+        availableDates_set = set(self.availableDates)  # Convert to a set for fast lookup
+        for date in availableDates_set:
+            cal.calevent_create(date, "Available", "highlight")
+        cal.tag_config('highlight', background='lightblue')
+
+        # Function to retrieve selected date
+        def get_date():
+            nonlocal selected_date
+            selected_date = cal.get_date()
+            selected_date = pd.Timestamp(selected_date).date()
+            self.previouslySelectedDate = selected_date
+            calendar_window.destroy()
+            
+        # Button to confirm date selection
+        select_button = tk.Button(calendar_window, text="Select Date", command=get_date)
+        select_button.pack(pady=10)
+        cal.selection_set(self.previouslySelectedDate)
+
+        # Wait for the calendar window to close
+        calendar_window.wait_window()
+        if selected_date == None:
+            raise SystemExit
+        if not self.arrayContains(self.availableDates, selected_date):
+            formatted_dates = str(self.availableDates)
+            print(f"Not A Valid Day. Availability Includes:{formatted_dates}")
+            return self.selectDay()
+        print(f"Exiting Selector With {selected_date}")
+        return selected_date
+    
+    def displayOutput(self):
+        if self.completedScan == False:
+            print("Attempted Display With Already Existing Display In Action")
+            return
+        newWindow = tk.Tk()
+        newWindow.withdraw()  # Hide the root window initially
+        output_window = tk.Toplevel(newWindow)  # New window for output
+        output_window.title("Address List")
+        self.completedScan = False
+        self.dataNeedingProcessed = []
+        self.dataProcessed = []
+        
+        # Create a scrolled text widget
+        self.displayed_text_area = scrolledtext.ScrolledText(output_window, wrap=tk.WORD, width=160, height=50)
+        self.displayed_text_area.pack(padx=10, pady=10)
+        self.displayed_text_area.config(state=tk.DISABLED)
+        output_window.after(100, self.addOutput, output_window)
+        output_window.wait_window()
+        output_window.destroy()
+        self.completedScan = True
+    
+    def addOutput(self, originalWindowObject):
+        if self.completedScan != True:
+            for data in self.dataNeedingProcessed:
+                if not self.dataProcessed.__contains__(data):
+                    self.displayed_text_area.config(state=tk.NORMAL)
+                    self.displayed_text_area.insert(tk.INSERT, f"\n{data}")
+                    self.displayed_text_area.config(state=tk.DISABLED)
+                    self.dataProcessed.append(data)
+                    print(f"Displaying Data {data}")
+            if originalWindowObject:
+                originalWindowObject.after(100, self.addOutput, originalWindowObject)
+            
+    def insertNewData(self, newData: str):
+        self.dataNeedingProcessed.append(newData)
+    
+    ### LOGiC GATES ###
     
     def loadDay(self, date: str):
         # Ensure 'Date Submitted' is of type datetime
@@ -68,11 +154,11 @@ class Utils:
         return all_rows
     
     def getDatesAvailable(self):
-        available_dates = []
+        availableDates = []
         for date in self.file["Date Submitted"]:
-            if not available_dates.__contains__(date):
-                available_dates.append(date)
-        return available_dates
+            if not availableDates.__contains__(date):
+                availableDates.append(date)
+        return availableDates
     
     def arrayContains(self, array: list, key: str):
         try:
@@ -82,42 +168,7 @@ class Utils:
         except Exception as E:
             print(E)
             return False
-    
-    def selectDay(self):
-        calendar_window = tk.Toplevel(self.root)  # New window for calendar
-        calendar_window.title("Select Work Day")
-        selected_date = None  # Initialize selected date as None
-
-        # Create calendar widget
-        cal = Calendar(calendar_window, selectmode='day', date_pattern='yyyy-mm-dd')
-        cal.pack(pady=20)
-
-        # Highlight available dates in the calendar
-        available_dates_set = set(self.available_dates)  # Convert to a set for fast lookup
-        for date in available_dates_set:
-            cal.calevent_create(date, "Available", "highlight")
-        cal.tag_config('highlight', background='lightblue')
-
-        # Function to retrieve selected date
-        def get_date():
-            nonlocal selected_date
-            selected_date = cal.get_date()
-            selected_date = pd.Timestamp(selected_date).date()
-            calendar_window.destroy()
-            
-        # Button to confirm date selection
-        select_button = tk.Button(calendar_window, text="Select Date", command=get_date)
-        select_button.pack(pady=10)
-
-        # Wait for the calendar window to close
-        calendar_window.wait_window()
-        if not self.arrayContains(self.available_dates, selected_date):
-            formatted_dates = str(self.available_dates)
-            print(f"Not A Valid Day. Availability Includes:{formatted_dates}")
-            return self.selectDay()
-        print(f"Exiting Selector With {selected_date}")
-        return selected_date
-    
+        
     def getAddress(self, current_address: list):
         try:
             return f'{current_address["Address1"]} {current_address["Address2"]}, {current_address["City"]}, {current_address["State"]}, {current_address["Zip"]}'
@@ -130,18 +181,25 @@ class Utils:
         except Exception as E:
             print(f"{E}; The Address's Listed Are: {address_start}\n{address_end}")
 
+    def waitForCompletion(self, desiredAchievment: bool):
+        SecondsSpent, WaitTime = 0, 0.1
+        while self.completedScan != desiredAchievment:
+            sleep(WaitTime)
+            SecondsSpent += WaitTime
+        print(f"Completion Completed {desiredAchievment} in {WaitTime}s")
+
 class Geography:
-    def get_coordinates(self, address):
+    def getCoordinates(self, address):
         geolocator = Nominatim(user_agent="address_locator", timeout=10)
         location = geolocator.geocode(address)
         if not location:
             return None
         return (location.latitude, location.longitude)
 
-    def get_distance(self, address1, address2):
+    def getDistance(self, address1, address2):
         try:
-            coords_1 = self.get_coordinates(address1)
-            coords_2 = self.get_coordinates(address2)
+            coords_1 = self.getCoordinates(address1)
+            coords_2 = self.getCoordinates(address2)
             
             if not coords_1 or not coords_2:
                 return 0
@@ -150,67 +208,25 @@ class Geography:
         except:
             return 0
 
-            
 Session = Utils()
 GPS = Geography()
 
-while True:
-    CurrentDay = Session.loadDay(Session.selectDay())
-    PreviousAddress = ["", ""]
-    TotalDaysMiles, TravelDistance = 0, 0
-    for x in CurrentDay:
-        FinalOutput = Session.getAddress(x)
-        if PreviousAddress[0] != "" and not Session.isSameRoadAddress(PreviousAddress[0], x):
-            TravelDistance = GPS.get_distance(PreviousAddress[1], FinalOutput)
-            TotalDaysMiles += TravelDistance
-        PreviousAddress = [x, FinalOutput]
-        print(f"{FinalOutput} | {TravelDistance:.1f}mi")
-    print(f"{TotalDaysMiles:.1f}mi")
-    
-raise
-
-            
-#pip install osmnx
-from geopy.geocoders import Nominatim
-import networkx as nx
-import osmnx as ox
-class Geography:
-    def __init__(self):
-        self.geocoder = Nominatim(user_agent="address_locator")
-    
-    def get_coordinates(self, address: str):
-        # Sanitize the address
-        sanitized_address = " ".join(address.split()).strip()
-        location = self.geocoder.geocode(sanitized_address)
-        if location:
-            return location.latitude, location.longitude
-        else:
-            print(f"Unable to geocode address: {sanitized_address}")
-            return None
-
-    def calculate_distance(self, start_address: str, end_address: str):
-        # Get coordinates for both addresses
-        start_coords = self.get_coordinates(start_address)
-        end_coords = self.get_coordinates(end_address)
-
-        if not start_coords or not end_coords:
-            print(f"Failed to calculate distance. Check the addresses:\n"
-                  f"Start Address: {start_address}, End Address: {end_address}")
-            return None
-
-        try:
-            # Create a graph around the start address with a specified distance
-            G = ox.graph_from_point(start_coords, dist=10000, network_type="drive")
-            
-            # Get the nearest nodes for start and end points
-            start_node = ox.distance.nearest_nodes(G, start_coords[1], start_coords[0])
-            end_node = ox.distance.nearest_nodes(G, end_coords[1], end_coords[0])
-
-            # Calculate the shortest path distance
-            distance = nx.shortest_path_length(G, start_node, end_node, weight="length")
-            return distance
-        except Exception as e:
-            print(f"Error calculating distance: {e}")
-            return None
-GPS = Geography()
-    #print(GPS.calculate_distance(Session.getAddress(CurrentDay, 0), Session.getAddress(CurrentDay, 1))) -- Too Slow For It To Be Viable
+if __name__ == "__main__":
+    while True:
+        Session.waitForCompletion(True)
+        CurrentDay = Session.loadDay(Session.selectDay())
+        PreviousAddress = ["", ""]
+        TotalDaysMiles, TravelDistance = 0, 0
+        Thread(target=Session.displayOutput).start()
+        Session.waitForCompletion(False)
+        for current_address in CurrentDay:
+            if Session.completedScan == True:
+                continue
+            FormattedAddress = Session.getAddress(current_address)
+            if PreviousAddress[0] != "" and not Session.isSameRoadAddress(PreviousAddress[0], current_address):
+                TravelDistance = GPS.getDistance(PreviousAddress[1], FormattedAddress)
+                TotalDaysMiles += TravelDistance
+            PreviousAddress = [current_address, FormattedAddress]
+            Session.insertNewData(f"{FormattedAddress} | {TravelDistance:.1f}mi")
+        Session.insertNewData(f"{TotalDaysMiles:.1f}mi Traveled")
+        
