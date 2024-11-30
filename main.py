@@ -11,8 +11,16 @@ from tkinter import simpledialog
 from geopy.geocoders import Nominatim
 from geopy.distance import geodesic
 from tkinter import scrolledtext
+from tkinter import messagebox
 from threading import Thread
 from time import sleep
+import os
+
+class Files:
+    
+    def __init__(self):
+        
+        self.cachePath = ""
 
 class Utils:
     
@@ -24,12 +32,6 @@ class Utils:
         self.root.withdraw()  # Hide the root window initially
         self.completedScan = True # Initialize Variable
 
-        # Prompt the user for their first and last name
-        self.firstName = simpledialog.askstring("Input", "First Name:").capitalize().strip()
-        self.lastName = simpledialog.askstring("Input", "Last Name:").capitalize().strip()
-
-        self.d2d_rep = f"{self.firstName} {self.lastName}"
-
         # Open a file dialog to choose an Excel file
         self.filePath = load_file.askopenfilename(title="Select The Mileage Excel File", filetypes=[("Excel files", "*.xlsx;*.xls")])
 
@@ -39,19 +41,32 @@ class Utils:
                 self.file.columns = ['D2D Rep', 'Sales ID', 'Employee ID', 'Form ID', 'Form Name', 'FormInstanceID', 'Date Submitted', 
                   'Time Submitted', 'Address1', 'Address2', 'City', 'State', 'Zip', 'Distance from Entity']
                 self.file['Date Submitted'] = pd.to_datetime(self.file['Date Submitted'], errors='coerce')
-                self.file = self.file[self.file["D2D Rep"] == self.d2d_rep]
+                self.promptUser() # Get Name And Confirm Its Located In File
+                self.formatForUser() # Format File List To User
+                self.file['Time Submitted'] = pd.to_datetime(self.file['Time Submitted'], format='%H:%M:%S', errors='coerce').dt.time
+                self.file = self.file.sort_values(by=['Date Submitted', 'Time Submitted'], ascending=[True, True]) # Sort Dates
                 self.availableDates = self.getDatesAvailable()
                 self.previouslySelectedDate = self.availableDates[0]
-                self.file['Time Submitted'] = pd.to_datetime(
-                    self.file['Time Submitted'], format='%H:%M:%S', errors='coerce'
-                ).dt.time
-                self.file = self.file.sort_values(by=['Date Submitted', 'Time Submitted'], ascending=[True, True])
-            except Exception as Err_Code:
-                print(Err_Code)
+            except Exception as ErrorCode:
+                messagebox.showerror("Error In Reading File", ErrorCode)
                 self.__init__()
         else:
-            print("No File Selected")
+            messagebox.showwarning("Wrong File", "Please Provide A Valid Mileage Report!")
             self.__init__()
+    
+    def promptUser(self):
+        # Prompt the user for their first and last name
+        self.firstName = simpledialog.askstring("Input", "First Name:").capitalize().strip()
+        self.lastName = simpledialog.askstring("Input", "Last Name:").capitalize().strip()
+        self.d2d_rep = f"{self.firstName} {self.lastName}"
+        if self.d2d_rep in self.file["D2D Rep"].values:
+            return 
+        else:
+            messagebox.showwarning("Wrong User", "The Name You Provided Was Incorrect! Please Try Again!")
+            return self.promptUser()
+            
+    def formatForUser(self):
+        self.file = self.file[self.file["D2D Rep"] == self.d2d_rep]
     
     ### UI GATES ###
     
@@ -89,6 +104,7 @@ class Utils:
             raise SystemExit
         if not self.arrayContains(self.availableDates, selected_date):
             formatted_dates = str(self.availableDates)
+            messagebox.showwarning("Wrong Date", "Please Provide A Valid Date!")
             print(f"Not A Valid Day. Availability Includes:{formatted_dates}")
             return self.selectDay()
         print(f"Exiting Selector With {selected_date}")
