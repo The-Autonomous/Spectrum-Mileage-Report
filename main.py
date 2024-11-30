@@ -8,6 +8,8 @@ import tkinter.filedialog as load_file
 import tkinter as tk
 from tkcalendar import Calendar
 from tkinter import simpledialog
+from geopy.geocoders import Nominatim
+from geopy.distance import geodesic
 
 class Utils:
     
@@ -120,16 +122,51 @@ class Utils:
         try:
             return f'{current_address["Address1"]} {current_address["Address2"]}, {current_address["City"]}, {current_address["State"]}, {current_address["Zip"]}'
         except Exception as E:
-            print(f"{E}; The Address List Is: {current_address}")
+            print(f"{E}; The Address Listed Is: {current_address}")
+            
+    def isSameRoadAddress(self, address_start, address_end):
+        try:
+            return ''.join([i for i in address_start["Address1"] if not i.isdigit()]) == ''.join([i for i in address_end["Address1"] if not i.isdigit()])
+        except Exception as E:
+            print(f"{E}; The Address's Listed Are: {address_start}\n{address_end}")
+
+class Geography:
+    def get_coordinates(self, address):
+        geolocator = Nominatim(user_agent="address_locator", timeout=10)
+        location = geolocator.geocode(address)
+        if not location:
+            return None
+        return (location.latitude, location.longitude)
+
+    def get_distance(self, address1, address2):
+        try:
+            coords_1 = self.get_coordinates(address1)
+            coords_2 = self.get_coordinates(address2)
+            
+            if not coords_1 or not coords_2:
+                return 0
+            
+            return geodesic(coords_1, coords_2).miles
+        except:
+            return 0
 
             
 Session = Utils()
+GPS = Geography()
 
 while True:
     CurrentDay = Session.loadDay(Session.selectDay())
+    PreviousAddress = ["", ""]
+    TotalDaysMiles, TravelDistance = 0, 0
     for x in CurrentDay:
-        print(Session.getAddress(x))
-
+        FinalOutput = Session.getAddress(x)
+        if PreviousAddress[0] != "" and not Session.isSameRoadAddress(PreviousAddress[0], x):
+            TravelDistance = GPS.get_distance(PreviousAddress[1], FinalOutput)
+            TotalDaysMiles += TravelDistance
+        PreviousAddress = [x, FinalOutput]
+        print(f"{FinalOutput} | {TravelDistance:.1f}mi")
+    print(f"{TotalDaysMiles:.1f}mi")
+    
 raise
 
             
