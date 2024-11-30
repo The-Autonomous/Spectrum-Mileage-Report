@@ -14,13 +14,50 @@ from tkinter import scrolledtext
 from tkinter import messagebox
 from threading import Thread
 from time import sleep
+import json
 import os
 
 class Files:
-    
     def __init__(self):
-        
-        self.cachePath = ""
+        # Set cachePath to a 'cache' folder in the script's directory
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        self.cachePath = os.path.join(script_dir, "cache")
+        self.quickSave = {}
+
+        # Create the cache folder if it doesn't exist
+        if not os.path.exists(self.cachePath):
+            os.makedirs(self.cachePath)
+
+    def loadData(self, fileName):
+        filePath = os.path.join(self.cachePath, fileName)
+        if not os.path.exists(filePath):
+            # If the file doesn't exist, create a blank JSON file
+            with open(filePath, "w") as file:
+                json.dump({}, file)  # Create an empty JSON object
+            print(f"File '{fileName}' did not exist. A blank JSON file has been created at '{filePath}'.")
+            return {}
+
+        try:
+            with open(filePath, "r") as file:
+                data = json.load(file)  # Load JSON data
+            return data  # Return the loaded data
+        except json.JSONDecodeError:
+            print(f"Error: File '{fileName}' is not a valid JSON file.")
+            return None
+
+    def saveData(self, fileName, data):
+        filePath = os.path.join(self.cachePath, fileName)
+        try:
+            with open(filePath, "w") as file:
+                json.dump(data, file, indent=4)  # Save data as JSON
+            print(f"Data successfully saved to '{filePath}'.")
+        except Exception as e:
+            print(f"Error: Could not save data to '{filePath}'. {e}")
+            
+    def setQuickSave(self, fileName, functionName, dataRetrieval):
+        def forwardSave():
+            self.saveData(fileName, dataRetrieval())
+        self.quickSave[functionName] = forwardSave
 
 class Utils:
     
@@ -31,6 +68,12 @@ class Utils:
         self.root = tk.Tk()
         self.root.withdraw()  # Hide the root window initially
         self.completedScan = True # Initialize Variable
+        
+        # Init Cache
+        userDataFileName = "userData.json"
+        self.fileCache = Files()
+        self.loadedCache = self.fileCache.loadData(userDataFileName)
+        self.fileCache.setQuickSave(userDataFileName, "loadedCache", lambda: self.loadedCache)
 
         # Open a file dialog to choose an Excel file
         self.filePath = load_file.askopenfilename(title="Select The Mileage Excel File", filetypes=[("Excel files", "*.xlsx;*.xls")])
@@ -56,13 +99,21 @@ class Utils:
     
     def promptUser(self):
         # Prompt the user for their first and last name
-        self.firstName = simpledialog.askstring("Input", "First Name:").capitalize().strip()
-        self.lastName = simpledialog.askstring("Input", "Last Name:").capitalize().strip()
-        self.d2d_rep = f"{self.firstName} {self.lastName}"
-        if self.d2d_rep in self.file["D2D Rep"].values:
-            return 
-        else:
-            messagebox.showwarning("Wrong User", "The Name You Provided Was Incorrect! Please Try Again!")
+        try:
+            self.firstName = self.loadedCache["firstName"] or simpledialog.askstring("Input", "First Name:").capitalize().strip()
+            self.lastName = self.loadedCache["lastName"] or simpledialog.askstring("Input", "Last Name:").capitalize().strip()
+            self.d2d_rep = f"{self.firstName} {self.lastName}"
+            if self.d2d_rep in self.file["D2D Rep"].values:
+                self.loadedCache["firstName"], self.loadedCache["lastName"] = self.firstName, self.lastName
+                self.fileCache.quickSave["loadedCache"]()
+                return 
+            else:
+                messagebox.showwarning("Wrong User", "The Name You Provided Was Incorrect! Please Try Again!")
+                self.loadedCache["firstName"], self.loadedCache["lastName"] = "", ""
+                return self.promptUser()
+        except Exception as E:
+            print(f"Failure In Prompting Users Name. Resetting Saved Values And Running Again. {E}")
+            self.loadedCache["firstName"], self.loadedCache["lastName"] = "", ""
             return self.promptUser()
             
     def formatForUser(self):
@@ -77,7 +128,7 @@ class Utils:
 
         # Create calendar widget
         cal = Calendar(calendar_window, selectmode='day', date_pattern='yyyy-mm-dd')
-        cal.pack(pady=20)
+        cal.pack(pady=20, padx=50)
 
         # Highlight available dates in the calendar
         availableDates_set = set(self.availableDates)  # Convert to a set for fast lookup
