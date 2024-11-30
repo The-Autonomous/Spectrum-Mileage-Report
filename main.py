@@ -18,6 +18,7 @@ import json
 import os
 
 class Files:
+    
     def __init__(self):
         # Set cachePath to a 'cache' folder in the script's directory
         script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -120,6 +121,33 @@ class Utils:
         self.file = self.file[self.file["D2D Rep"] == self.d2d_rep]
     
     ### UI GATES ###
+    
+    def quickPrompt(self, Option1: list, Option2: list):
+        """Options should be lists containing first the text to display, then the function to be called"""
+        
+        newWindow = tk.Tk()
+        newWindow.withdraw()  # Hide the root window initially
+        output_window = tk.Toplevel(newWindow)  # New window for output
+        output_window.title("Select Below")
+        def handleOption1():
+            newWindow.destroy()
+            Option1[1]()
+            
+        def handleOption2():
+            newWindow.destroy()
+            Option2[1]()
+        
+        button1 = tk.Button(output_window, text=Option1[0], command=handleOption1)
+        button2 = tk.Button(output_window, text=Option2[0], command=handleOption2)
+
+        # Position the buttons next to each other
+        button1.pack(side=tk.LEFT, padx=10, pady=10)
+        button2.pack(side=tk.LEFT, padx=10, pady=10)
+        output_window.wait_window()
+        try:
+            newWindow.destroy()
+        except:
+            print("Exiting")
     
     def selectDay(self):
         calendar_window = tk.Toplevel(self.root)  # New window for calendar
@@ -254,6 +282,31 @@ class Utils:
             sleep(WaitTime)
             SecondsSpent += WaitTime
         print(f"Completion Completed {desiredAchievment} in {WaitTime}s")
+        
+    def manualMainLoop(self):
+        while True:
+            Session.waitForCompletion(True)
+            CurrentDay = Session.loadDay(Session.selectDay())
+            PreviousAddress = ["", ""]
+            TotalDaysMiles, TravelDistance = 0, 0
+            Thread(target=Session.displayOutput).start()
+            Session.waitForCompletion(False)
+            for current_address in CurrentDay:
+                if Session.completedScan == True:
+                    continue
+                FormattedAddress = Session.getAddress(current_address)
+                if PreviousAddress[0] != "" and not Session.isSameRoadAddress(PreviousAddress[0], current_address):
+                    TravelDistance = GPS.getDistance(PreviousAddress[1], FormattedAddress)
+                    TotalDaysMiles += TravelDistance
+                else:
+                    TravelDistance = 0
+                PreviousAddress = [current_address, FormattedAddress]
+                Session.insertNewData(f"{FormattedAddress} | {TravelDistance:.1f}mi")
+            Session.insertNewData(f"{TotalDaysMiles:.1f}mi Traveled")
+    
+    def automaticMainLoop(self):
+        while True:
+            sleep(1)
 
 class Geography:
     def getCoordinates(self, address):
@@ -279,21 +332,4 @@ Session = Utils()
 GPS = Geography()
 
 if __name__ == "__main__":
-    while True:
-        Session.waitForCompletion(True)
-        CurrentDay = Session.loadDay(Session.selectDay())
-        PreviousAddress = ["", ""]
-        TotalDaysMiles, TravelDistance = 0, 0
-        Thread(target=Session.displayOutput).start()
-        Session.waitForCompletion(False)
-        for current_address in CurrentDay:
-            if Session.completedScan == True:
-                continue
-            FormattedAddress = Session.getAddress(current_address)
-            if PreviousAddress[0] != "" and not Session.isSameRoadAddress(PreviousAddress[0], current_address):
-                TravelDistance = GPS.getDistance(PreviousAddress[1], FormattedAddress)
-                TotalDaysMiles += TravelDistance
-            PreviousAddress = [current_address, FormattedAddress]
-            Session.insertNewData(f"{FormattedAddress} | {TravelDistance:.1f}mi")
-        Session.insertNewData(f"{TotalDaysMiles:.1f}mi Traveled")
-        
+    Session.quickPrompt(["Manually Do Mileage", Session.manualMainLoop], ["Automatically Do Mileage", Session.automaticMainLoop])
