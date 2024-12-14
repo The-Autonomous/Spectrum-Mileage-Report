@@ -12,18 +12,93 @@ from geopy.geocoders import Nominatim
 from geopy.distance import geodesic
 from tkinter import scrolledtext
 from tkinter import messagebox
+from tkinter import ttk
 from threading import Thread
 from time import sleep
 import json
 import os
 import requests
+import sys
 
 class SelfInstall:
     
-    def __init__(self):
-        self.ProductVersion = "0.0.1"
+    def __init__(self, CurrentSession):
+        self.Session = CurrentSession
+        self.ProductVersion = "0.0.2"
         self.VersionSearchTerm = "Version Number "
+        self.BackupName = "Backup_Main.py"
         self.LoadURL = "https://raw.githubusercontent.com/The-Autonomous/Spectrum-Mileage-Report/refs/heads/main/README.md"
+        self.DownloadURL = "https://raw.githubusercontent.com/The-Autonomous/Spectrum-Mileage-Report/refs/heads/main/main.py"
+    
+    def noInstall(self):
+        print("Skipping Auto-Update...")
+    
+    def installUpdate(self):
+        NewestCode = requests.get(url=self.DownloadURL).text
+        root = tk.Tk()
+        root.title("Installing Update")
+        root.geometry("300x100")
+
+        root.protocol("WM_DELETE_WINDOW", lambda: None)  # Ignore close events
+        
+        # Progress bar widget
+        progress_label = tk.Label(root, text="Downloading update...")
+        progress_label.pack(pady=10)
+        progress = ttk.Progressbar(root, orient="horizontal", length=250, mode="determinate")
+        progress.pack(pady=10)
+        
+        # Function to download and update the script
+        skipToTheEnd = False
+        def perform_update():
+            global skipToTheEnd
+            try:
+                current_file_path = os.path.realpath(sys.argv[0])
+                backup_file_path = os.path.join(os.path.dirname(current_file_path), self.BackupName)
+
+                # Read the current script's contents
+                with open(current_file_path, "r") as current_file:
+                    content = current_file.read()
+
+                # Write the contents to the backup file
+                with open(backup_file_path, "w") as backup_file:
+                    backup_file.write(content)
+            except:
+                messagebox.showerror("Backup Failed!", ErrorCode)
+                skipToTheEnd = True
+                
+            try:
+                # Fetch the script from the URL
+                response = requests.get(self.DownloadURL, stream=True)
+                total_size = int(response.headers.get('content-length', 0))
+                downloaded_size = 0
+
+                # Read and write in chunks while updating the progress bar
+                with open(current_file_path, "wb") as file:
+                    for chunk in response.iter_content(chunk_size=1024):
+                        if chunk:
+                            file.write(chunk)
+                            downloaded_size += len(chunk)
+                            progress["value"] = (downloaded_size / total_size) * 100
+                            root.update_idletasks()
+                
+                progress_label.config(text="Update Complete!")
+                progress["value"] = 100
+
+                # Close the window after a short delay
+                root.after(100, lambda: restart_script(current_file_path))
+
+            except Exception as ErrorCode:
+                messagebox.showerror("Error In Downloading Update", ErrorCode)
+                root.destroy()
+                
+        def restart_script(script_path):
+            root.destroy()
+            os.execv(sys.executable, ['python'] + [script_path])  # Restart the script
+        
+        if skipToTheEnd == False:
+            # Run the update in the Tkinter main loop
+            root.after(10, perform_update)
+            root.mainloop()
     
     def checkPublicRecord(self):
         LatestCode = requests.get(url=self.LoadURL).text
@@ -31,7 +106,7 @@ class SelfInstall:
             if line.__contains__(self.VersionSearchTerm):
                 LatestVersion = line.replace(self.VersionSearchTerm, "").strip()
                 if not LatestVersion == self.ProductVersion:
-                    messagebox.showwarning("Update Required!", f"Please Update To Version {LatestVersion}!")
+                    Session.quickPrompt("Update Required!", [f"Keep Using Version {self.ProductVersion}", self.noInstall], [f"Update To Version {LatestVersion}", self.installUpdate])
     
 class Files:
     
@@ -92,6 +167,7 @@ class Utils:
         self.loadedCache = self.fileCache.loadData(userDataFileName)
         self.fileCache.setQuickSave(userDataFileName, "loadedCache", lambda: self.loadedCache)
 
+    def loadMileageDocument(self):
         # Open a file dialog to choose an Excel file
         self.filePath = load_file.askopenfilename(title="Select The Mileage Excel File", filetypes=[("Excel files", "*.xlsx;*.xls")])
 
@@ -109,10 +185,10 @@ class Utils:
                 self.previouslySelectedDate = self.availableDates[0]
             except Exception as ErrorCode:
                 messagebox.showerror("Error In Reading File", ErrorCode)
-                self.__init__()
+                self.loadMileageDocument()
         else:
             messagebox.showwarning("Wrong File", "Please Provide A Valid Mileage Report!")
-            self.__init__()
+            self.loadMileageDocument()
     
     def promptUser(self):
         # Prompt the user for their first and last name
@@ -138,13 +214,13 @@ class Utils:
     
     ### UI GATES ###
     
-    def quickPrompt(self, Option1: list, Option2: list):
+    def quickPrompt(self, Header: str = "Select Below", Option1: list = None, Option2: list = None):
         """Options should be lists containing first the text to display, then the function to be called"""
         
         newWindow = tk.Tk()
         newWindow.withdraw()  # Hide the root window initially
         output_window = tk.Toplevel(newWindow)  # New window for output
-        output_window.title("Select Below")
+        output_window.title(Header)
         def handleOption1():
             newWindow.destroy()
             Option1[1]()
@@ -163,7 +239,7 @@ class Utils:
         try:
             newWindow.destroy()
         except:
-            print("Exiting")
+            pass
     
     def selectDay(self):
         calendar_window = tk.Toplevel(self.root)  # New window for calendar
@@ -344,17 +420,25 @@ class Geography:
         except:
             return 0
 
-#########################
-##Check Version On Load##
-#########################
-
-InstallChecker = SelfInstall()
-InstallChecker.checkPublicRecord()
-
-#########################
-
-Session = Utils()
-GPS = Geography()
-
 if __name__ == "__main__":
-    Session.quickPrompt(["Manually Do Mileage", Session.manualMainLoop], ["Automatically Do Mileage", Session.automaticMainLoop])
+
+    #########################
+    #####Initialize Data#####
+    #########################
+    
+    Session = Utils()
+    GPS = Geography()
+    
+    #########################
+    ##Check Version On Load##
+    #########################
+
+    InstallChecker = SelfInstall(CurrentSession=Session)
+    InstallChecker.checkPublicRecord()
+    
+    #########################
+    ##Start Mileage Process##
+    #########################
+    
+    Session.loadMileageDocument()
+    Session.quickPrompt(None, ["Manually Do Mileage", Session.manualMainLoop], ["Automatically Do Mileage", Session.automaticMainLoop])
