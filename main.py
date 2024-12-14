@@ -16,7 +16,23 @@ from threading import Thread
 from time import sleep
 import json
 import os
+import requests
 
+class SelfInstall:
+    
+    def __init__(self):
+        self.ProductVersion = "0.0.1"
+        self.VersionSearchTerm = "Version Number "
+        self.LoadURL = "https://raw.githubusercontent.com/The-Autonomous/Spectrum-Mileage-Report/refs/heads/main/README.md"
+    
+    def checkPublicRecord(self):
+        LatestCode = requests.get(url=self.LoadURL).text
+        for line in LatestCode.splitlines():
+            if line.__contains__(self.VersionSearchTerm):
+                LatestVersion = line.replace(self.VersionSearchTerm, "").strip()
+                if not LatestVersion == self.ProductVersion:
+                    messagebox.showwarning("Update Required!", f"Please Update To Version {LatestVersion}!")
+    
 class Files:
     
     def __init__(self):
@@ -327,6 +343,15 @@ class Geography:
             return geodesic(coords_1, coords_2).miles
         except:
             return 0
+
+#########################
+##Check Version On Load##
+#########################
+
+InstallChecker = SelfInstall()
+InstallChecker.checkPublicRecord()
+
+#########################
 
 Session = Utils()
 GPS = Geography()
