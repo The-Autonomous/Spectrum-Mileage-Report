@@ -19,12 +19,13 @@ import json
 import os
 import requests
 import sys
+import re
 
 class SelfInstall:
     
     def __init__(self, CurrentSession):
         self.Session = CurrentSession
-        self.ProductVersion = "0.0.2"
+        self.ProductVersion = "0.0.3"
         self.VersionSearchTerm = "Version Number "
         self.BackupName = "Backup_Main.py"
         self.LoadURL = "https://raw.githubusercontent.com/The-Autonomous/Spectrum-Mileage-Report/refs/heads/main/README.md"
@@ -34,7 +35,6 @@ class SelfInstall:
         print("Skipping Auto-Update...")
     
     def installUpdate(self):
-        NewestCode = requests.get(url=self.DownloadURL).text
         root = tk.Tk()
         root.title("Installing Update")
         root.geometry("300x100")
@@ -161,6 +161,8 @@ class Utils:
         self.root.withdraw()  # Hide the root window initially
         self.completedScan = True # Initialize Variable
         
+        self.defaultOffice = "3315 N Ridge Rd E, Ashtabula, Oh, 44004"
+        
         # Init Cache
         userDataFileName = "userData.json"
         self.fileCache = Files()
@@ -195,18 +197,28 @@ class Utils:
         try:
             self.firstName = self.loadedCache["firstName"] or simpledialog.askstring("Input", "First Name:").capitalize().strip()
             self.lastName = self.loadedCache["lastName"] or simpledialog.askstring("Input", "Last Name:").capitalize().strip()
+            self.homeAddress = self.loadedCache["homeAddress"] or simpledialog.askstring("Input", "Home Address (Street, City, Zip):").strip()
+            self.homeZipCode = re.search(r'\b\d{5}\b', self.homeAddress)
+            self.officeAddress = self.loadedCache["officeAddress"] or self.defaultOffice or simpledialog.askstring("Input", "Office Address (Street, City, State, Zip):").strip()
             self.d2d_rep = f"{self.firstName} {self.lastName}"
+            
+            if not Geography().getCoordinates(self.homeAddress):
+                self.loadedCache["homeAddress"] = ""
+                messagebox.showwarning("Wrong Address", "The Address You Provided Did Not Work! Please Try Another One! Remember To Use The Format Of Street, City, State, Zip!")
+                return self.promptUser()
+            
             if self.d2d_rep in self.file["D2D Rep"].values:
-                self.loadedCache["firstName"], self.loadedCache["lastName"] = self.firstName, self.lastName
+                self.loadedCache["firstName"], self.loadedCache["lastName"], self.loadedCache["homeAddress"], self.loadedCache["officeAddress"] = self.firstName, self.lastName, self.homeAddress, self.officeAddress
                 self.fileCache.quickSave["loadedCache"]()
                 return 
             else:
                 messagebox.showwarning("Wrong User", "The Name You Provided Was Incorrect! Please Try Again!")
                 self.loadedCache["firstName"], self.loadedCache["lastName"] = "", ""
                 return self.promptUser()
+                
         except Exception as E:
             print(f"Failure In Prompting Users Name. Resetting Saved Values And Running Again. {E}")
-            self.loadedCache["firstName"], self.loadedCache["lastName"] = "", ""
+            self.loadedCache["firstName"], self.loadedCache["lastName"], self.loadedCache["homeAddress"], self.loadedCache["officeAddress"] = "", "", "", ""
             return self.promptUser()
             
     def formatForUser(self):
@@ -214,7 +226,7 @@ class Utils:
     
     ### UI GATES ###
     
-    def quickPrompt(self, Header: str = "Select Below", Option1: list = None, Option2: list = None):
+    def quickPrompt(self, Header: str, Option1: list = None, Option2: list = None):
         """Options should be lists containing first the text to display, then the function to be called"""
         
         newWindow = tk.Tk()
@@ -281,22 +293,38 @@ class Utils:
         print(f"Exiting Selector With {selected_date}")
         return selected_date
     
+    
+    def displayMouseWheelFunction(self, event):
+        # Scroll by the amount of the wheel scroll, in this case 3 units
+        self.displayed_text_canvas.yview_scroll(int(-1*(event.delta/120)), "units")
+    
     def displayOutput(self):
         if self.completedScan == False:
             print("Attempted Display With Already Existing Display In Action")
             return
-        newWindow = tk.Tk()
-        newWindow.withdraw()  # Hide the root window initially
-        output_window = tk.Toplevel(newWindow)  # New window for output
+        self.newWindow = tk.Tk()
+        self.newWindow.withdraw()  # Hide the root window initially
+        output_window = tk.Toplevel(self.newWindow)  # New window for output
         output_window.title("Address List")
         self.completedScan = False
         self.dataNeedingProcessed = []
         self.dataProcessed = []
         
-        # Create a scrolled text widget
-        self.displayed_text_area = scrolledtext.ScrolledText(output_window, wrap=tk.WORD, width=160, height=50)
-        self.displayed_text_area.pack(padx=10, pady=10)
-        self.displayed_text_area.config(state=tk.DISABLED)
+        # Create canvas and scrollbar
+        self.displayed_text_canvas = tk.Canvas(output_window)
+        scrollbar = tk.Scrollbar(output_window, orient="vertical", command=self.displayed_text_canvas.yview)
+        self.displayed_text_canvas.configure(yscrollcommand=scrollbar.set)
+        self.displayed_text_frame = tk.Frame(self.displayed_text_canvas)
+        
+        # Create a window on the canvas to place the frame
+        self.displayed_text_canvas.create_window((0, 0), window=self.displayed_text_frame, anchor="nw")
+        
+        self.displayed_text_canvas.bind_all("<MouseWheel>", lambda event: self.displayMouseWheelFunction(event))
+        
+        # Pack scrollbar and canvas
+        scrollbar.pack(side="right", fill="y")
+        self.displayed_text_canvas.pack(side="left", fill="both", expand=True)
+        
         output_window.after(100, self.addOutput, output_window)
         output_window.wait_window()
         output_window.destroy()
@@ -304,15 +332,26 @@ class Utils:
     
     def addOutput(self, originalWindowObject):
         if self.completedScan != True:
-            for data in self.dataNeedingProcessed:
+            for idx, data in enumerate(self.dataNeedingProcessed):
                 if not self.dataProcessed.__contains__(data):
-                    self.displayed_text_area.config(state=tk.NORMAL)
-                    self.displayed_text_area.insert(tk.INSERT, f"\n{data}")
-                    self.displayed_text_area.config(state=tk.DISABLED)
+                    
+                    button = tk.Button(self.displayed_text_frame, text=data, command=lambda d=data: self.copyToClipboard(str(d).split("|")[0].strip()))
+                    button.grid(row=idx, column=0, sticky="w", pady=5)
+                    
                     self.dataProcessed.append(data)
                     print(f"Displaying Data {data}")
+                    
+            # Update the scrollregion after adding buttons to the frame
+            self.displayed_text_frame.update_idletasks()  # Make sure all buttons are laid out
+            self.displayed_text_canvas.config(scrollregion=self.displayed_text_canvas.bbox("all"))  # Update scroll region
+
             if originalWindowObject:
                 originalWindowObject.after(100, self.addOutput, originalWindowObject)
+            
+    def copyToClipboard(self, text):
+        self.newWindow.clipboard_clear()  # Clear the clipboard
+        self.newWindow.clipboard_append(text)  # Append the text to the clipboard
+        self.newWindow.update()  # Update the clipboard
             
     def insertNewData(self, newData: str):
         self.dataNeedingProcessed.append(newData)
@@ -361,10 +400,14 @@ class Utils:
             return f'{current_address["Address1"]} {current_address["Address2"]}, {current_address["City"]}, {current_address["State"]}, {current_address["Zip"]}'
         except Exception as E:
             print(f"{E}; The Address Listed Is: {current_address}")
-            
+    
+    def normalizeAddress(self, address: dict):
+            normalized = re.sub(r'^\d+\s+', '', str(address["Address1"]).lower().strip())
+            return normalized
+        
     def isSameRoadAddress(self, address_start, address_end):
         try:
-            return ''.join([i for i in address_start["Address1"] if not i.isdigit()]) == ''.join([i for i in address_end["Address1"] if not i.isdigit()])
+            return self.normalizeAddress(address_start) + address_start["Zip"] == self.normalizeAddress(address_end) + address_end["Zip"]
         except Exception as E:
             print(f"{E}; The Address's Listed Are: {address_start}\n{address_end}")
 
@@ -377,24 +420,30 @@ class Utils:
         
     def manualMainLoop(self):
         while True:
-            Session.waitForCompletion(True)
-            CurrentDay = Session.loadDay(Session.selectDay())
-            PreviousAddress = ["", ""]
+            self.waitForCompletion(True)
+            
+            CurrentDay = self.loadDay(self.selectDay())
+            PreviousAddress = [{"Address1":self.homeAddress, "Zip":self.homeZipCode}, self.homeAddress]
             TotalDaysMiles, TravelDistance = 0, 0
-            Thread(target=Session.displayOutput).start()
-            Session.waitForCompletion(False)
+            
+            Thread(target=self.displayOutput).start()
+            self.waitForCompletion(False)
+            
+            self.insertNewData(f"{self.officeAddress} | Office\n\n")
+            self.insertNewData(f"{self.homeAddress} | Home")
+            
             for current_address in CurrentDay:
-                if Session.completedScan == True:
+                if self.completedScan == True:
                     continue
-                FormattedAddress = Session.getAddress(current_address)
-                if PreviousAddress[0] != "" and not Session.isSameRoadAddress(PreviousAddress[0], current_address):
+                FormattedAddress = self.getAddress(current_address)
+                if PreviousAddress[0] != "" and not self.isSameRoadAddress(PreviousAddress[0], current_address):
                     TravelDistance = GPS.getDistance(PreviousAddress[1], FormattedAddress)
                     TotalDaysMiles += TravelDistance
                 else:
                     TravelDistance = 0
                 PreviousAddress = [current_address, FormattedAddress]
-                Session.insertNewData(f"{FormattedAddress} | {TravelDistance:.1f}mi")
-            Session.insertNewData(f"{TotalDaysMiles:.1f}mi Traveled")
+                self.insertNewData(f"{FormattedAddress} | {TravelDistance:.1f}mi")
+            self.insertNewData(f"{TotalDaysMiles:.1f}mi Traveled")
     
     def automaticMainLoop(self):
         while True:
@@ -417,7 +466,8 @@ class Geography:
                 return 0
             
             return geodesic(coords_1, coords_2).miles
-        except:
+        except Exception as E:
+            print(E)
             return 0
 
 if __name__ == "__main__":
@@ -441,4 +491,4 @@ if __name__ == "__main__":
     #########################
     
     Session.loadMileageDocument()
-    Session.quickPrompt(None, ["Manually Do Mileage", Session.manualMainLoop], ["Automatically Do Mileage", Session.automaticMainLoop])
+    Session.quickPrompt("Select Below", ["Manually Do Mileage", Session.manualMainLoop], ["Automatically Do Mileage", Session.automaticMainLoop])
