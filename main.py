@@ -23,7 +23,7 @@ class SelfInstall:
     
     def __init__(self, CurrentSession):
         self.Session = CurrentSession
-        self.ProductVersion = "0.0.8"
+        self.ProductVersion = "1.0.0"
         self.VersionSearchTerm = "Version Number "
         self.BackupName = "Backup_Main.py"
         self.LoadURL = "https://raw.githubusercontent.com/The-Autonomous/Spectrum-Mileage-Report/refs/heads/main/README.md"
@@ -433,11 +433,11 @@ class Utils:
     
     def normalizeAddress(self, address: dict):
             normalized = re.sub(r'^\d+\s+', '', str(address["Address1"]).lower().strip())
-            return normalized
+            return str(normalized)
         
     def isSameRoadAddress(self, address_start, address_end):
         try:
-            return self.normalizeAddress(address_start) + address_start["Zip"] == self.normalizeAddress(address_end) + address_end["Zip"]
+            return self.normalizeAddress(address_start) + str(address_start["Zip"]) == self.normalizeAddress(address_end) + str(address_end["Zip"])
         except Exception as E:
             print(f"{E}; The Address's Listed Are: {address_start}\n{address_end}")
 
