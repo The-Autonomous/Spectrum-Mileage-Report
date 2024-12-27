@@ -1,31 +1,29 @@
-#pip install openpyxl
-#pip install xlrd
-#pip install tkcalendar
-# Required imports
+import os, sys, subprocess
+
+# List of external packages to ensure are installed
+packages = ["pandas", "tkcalendar", "geopy", "requests"]
+
+for pkg in packages:
+    try: __import__(pkg)
+    except: subprocess.check_call([sys.executable, "-m", "pip", "install", pkg])
+
+# Import all required modules
 import pandas as pd
-from pandas import option_context
 import tkinter.filedialog as load_file
 import tkinter as tk
 from tkcalendar import Calendar
-from tkinter import simpledialog
+from tkinter import simpledialog, messagebox, ttk
 from geopy.geocoders import Nominatim
 from geopy.distance import geodesic
-from tkinter import scrolledtext
-from tkinter import messagebox
-from tkinter import ttk
 from threading import Thread
 from time import sleep
-import json
-import os
-import requests
-import sys
-import re
+import json, os, requests, sys, re
 
 class SelfInstall:
     
     def __init__(self, CurrentSession):
         self.Session = CurrentSession
-        self.ProductVersion = "0.0.3"
+        self.ProductVersion = "0.0.5"
         self.VersionSearchTerm = "Version Number "
         self.BackupName = "Backup_Main.py"
         self.LoadURL = "https://raw.githubusercontent.com/The-Autonomous/Spectrum-Mileage-Report/refs/heads/main/README.md"
@@ -170,27 +168,54 @@ class Utils:
         self.fileCache.setQuickSave(userDataFileName, "loadedCache", lambda: self.loadedCache)
 
     def loadMileageDocument(self):
-        # Open a file dialog to choose an Excel file
-        self.filePath = load_file.askopenfilename(title="Select The Mileage Excel File", filetypes=[("Excel files", "*.xlsx;*.xls")])
-
-        if self.filePath:
+        while True:
+            self.filePath = load_file.askopenfilename(
+                title="Select The Mileage Excel File",
+                filetypes=[("Excel files", "*.xlsx;*.xls")]
+            )
+            if not self.filePath:
+                messagebox.showwarning("Wrong File", "Please Provide A Valid Mileage Report!")
+                continue
             try:
+                # Load the Excel file into a DataFrame
                 self.file = pd.read_excel(io=self.filePath, engine='openpyxl', na_filter=False)
-                self.file.columns = ['D2D Rep', 'Sales ID', 'Employee ID', 'Form ID', 'Form Name', 'FormInstanceID', 'Date Submitted', 
-                  'Time Submitted', 'Address1', 'Address2', 'City', 'State', 'Zip', 'Distance from Entity']
+                
+                # Define the required columns
+                required_columns = [
+                    'D2D Rep', 'Sales ID', 'Employee ID', 'Form ID', 'Form Name', 
+                    'FormInstanceID', 'Date Submitted', 'Time Submitted', 
+                    'Address1', 'Address2', 'City', 'State', 'Zip', 'Distance from Entity'
+                ]
+                
+                # Ensure all required columns exist in the DataFrame
+                for column in required_columns:
+                    if column not in self.file.columns:
+                        self.file[column] = ""  # Add missing column with blank values
+                
+                # Convert 'Date Submitted' to datetime
                 self.file['Date Submitted'] = pd.to_datetime(self.file['Date Submitted'], errors='coerce')
-                self.promptUser() # Get Name And Confirm Its Located In File
-                self.formatForUser() # Format File List To User
-                self.file['Time Submitted'] = pd.to_datetime(self.file['Time Submitted'], format='%H:%M:%S', errors='coerce').dt.time
-                self.file = self.file.sort_values(by=['Date Submitted', 'Time Submitted'], ascending=[True, True]) # Sort Dates
+                
+                self.promptUser()  # Get Name and Confirm It's Located in File
+                self.formatForUser()  # Format File List to User
+                
+                # Convert 'Time Submitted' to time
+                self.file['Time Submitted'] = pd.to_datetime(
+                    self.file['Time Submitted'], format='%H:%M:%S', errors='coerce'
+                ).dt.time
+                
+                # Sort DataFrame by 'Date Submitted' and 'Time Submitted'
+                self.file = self.file.sort_values(by=['Date Submitted', 'Time Submitted'], ascending=[True, True])
+                
+                # Get available dates
                 self.availableDates = self.getDatesAvailable()
-                self.previouslySelectedDate = self.availableDates[0]
-            except Exception as ErrorCode:
-                messagebox.showerror("Error In Reading File", ErrorCode)
-                self.loadMileageDocument()
-        else:
-            messagebox.showwarning("Wrong File", "Please Provide A Valid Mileage Report!")
-            self.loadMileageDocument()
+                
+                if self.availableDates:
+                    self.previouslySelectedDate = self.availableDates[0]
+                else:
+                    raise ValueError("No valid dates available in the file.")
+                break  # Exit loop on successful processing
+            except Exception as e:
+                messagebox.showerror("Error In Reading File", str(e))
     
     def promptUser(self):
         # Prompt the user for their first and last name
