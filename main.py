@@ -23,7 +23,7 @@ class SelfInstall:
     
     def __init__(self, CurrentSession):
         self.Session = CurrentSession
-        self.ProductVersion = "0.0.6"
+        self.ProductVersion = "0.0.8"
         self.VersionSearchTerm = "Version Number "
         self.BackupName = "Backup_Main.py"
         self.LoadURL = "https://raw.githubusercontent.com/The-Autonomous/Spectrum-Mileage-Report/refs/heads/main/README.md"
@@ -159,6 +159,7 @@ class Utils:
         self.root = tk.Tk()
         self.root.withdraw()  # Hide the root window initially
         self.completedScan = True # Initialize Variable
+        self.dateToShow = ""
         
         self.defaultOffice = "3315 N Ridge Rd E, Ashtabula, Oh, 44004"
         
@@ -333,8 +334,8 @@ class Utils:
         self.newWindow = tk.Tk()
         self.newWindow.withdraw()  # Hide the root window initially
         output_window = tk.Toplevel(self.newWindow)  # New window for output
-        self.newWindow.attributes("-topmost", True)
-        output_window.title("Address List")
+        output_window.attributes("-topmost", True)
+        output_window.title(f"Address List For {str(self.dateToShow)}")
         self.completedScan = False
         self.dataNeedingProcessed = []
         self.dataProcessed = []
@@ -426,7 +427,7 @@ class Utils:
         
     def getAddress(self, current_address: list):
         try:
-            return f'{current_address["Address1"]} {current_address["Address2"]}, {current_address["City"]}, {current_address["State"]}, {current_address["Zip"]}'
+            return f'{current_address["Address1"]}, {current_address["City"]}, {current_address["State"]}, {current_address["Zip"]}'
         except Exception as E:
             print(f"{E}; The Address Listed Is: {current_address}")
     
@@ -451,15 +452,16 @@ class Utils:
         while True:
             self.waitForCompletion(True)
             
-            CurrentDay = self.loadDay(self.selectDay())
+            self.dateToShow = self.selectDay()
+            CurrentDay = self.loadDay(self.dateToShow)
             PreviousAddress = [{"Address1":self.homeAddress, "Zip":self.homeZipCode}, self.homeAddress]
             TotalDaysMiles, TravelDistance = 0, 0
             
             Thread(target=self.displayOutput).start()
             self.waitForCompletion(False)
             
-            self.insertNewData(f"{self.officeAddress} | Office\n\n")
             self.insertNewData(f"{self.homeAddress} | Home")
+            self.insertNewData(f"{self.officeAddress} | Office\n\n")
             
             for current_address in CurrentDay:
                 if self.completedScan == True:
@@ -473,6 +475,7 @@ class Utils:
                 PreviousAddress = [current_address, FormattedAddress]
                 self.insertNewData(f"{FormattedAddress} | {TravelDistance:.1f}mi")
             self.insertNewData(f"{TotalDaysMiles:.1f}mi Traveled")
+            self.insertNewData(f"{self.homeAddress} | Home")
     
     def automaticMainLoop(self):
         while True:
