@@ -23,7 +23,7 @@ class SelfInstall:
     
     def __init__(self, CurrentSession):
         self.Session = CurrentSession
-        self.ProductVersion = "0.0.5"
+        self.ProductVersion = "0.0.6"
         self.VersionSearchTerm = "Version Number "
         self.BackupName = "Backup_Main.py"
         self.LoadURL = "https://raw.githubusercontent.com/The-Autonomous/Spectrum-Mileage-Report/refs/heads/main/README.md"
@@ -35,6 +35,7 @@ class SelfInstall:
     def installUpdate(self):
         root = tk.Tk()
         root.title("Installing Update")
+        root.attributes("-topmost", True)
         root.geometry("300x100")
 
         root.protocol("WM_DELETE_WINDOW", lambda: None)  # Ignore close events
@@ -255,6 +256,7 @@ class Utils:
         """Options should be lists containing first the text to display, then the function to be called"""
         
         newWindow = tk.Tk()
+        newWindow.attributes("-topmost", True)
         newWindow.withdraw()  # Hide the root window initially
         output_window = tk.Toplevel(newWindow)  # New window for output
         output_window.title(Header)
@@ -281,6 +283,7 @@ class Utils:
     def selectDay(self):
         calendar_window = tk.Toplevel(self.root)  # New window for calendar
         calendar_window.title("Select Work Day")
+        calendar_window.attributes("-topmost", True)
         selected_date = None  # Initialize selected date as None
 
         # Create calendar widget
@@ -330,6 +333,7 @@ class Utils:
         self.newWindow = tk.Tk()
         self.newWindow.withdraw()  # Hide the root window initially
         output_window = tk.Toplevel(self.newWindow)  # New window for output
+        self.newWindow.attributes("-topmost", True)
         output_window.title("Address List")
         self.completedScan = False
         self.dataNeedingProcessed = []
